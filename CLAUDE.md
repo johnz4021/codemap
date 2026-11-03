@@ -1,7 +1,8 @@
 # codemap
 
-A map you can point at and ask about, for code you didn't write yourself. Read `README.md` first. The design lives in
-the "Codemap v1 Design" artifact (link in the README); follow its build order.
+A map you can point at and ask about, for code you didn't write yourself. Read `README.md`, then `HANDOFF.md` (who it's
+for, what users asked for, the decisions and why, what's next, gotchas). The design lives in the "Codemap v1 Design"
+artifact (link in both).
 
 ## Rules
 
