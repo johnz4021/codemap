@@ -1,0 +1,25 @@
+{
+  "name": "@codemap/facts",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@vscode/tree-sitter-wasm": "0.3.1",
+    "es-module-lexer": "1.7.0",
+    "get-tsconfig": "4.14.3",
+    "oxc-parser": "0.153.0",
+    "oxc-resolver": "11.24.2",
+    "picomatch": "4.0.7",
+    "yaml": "2.9.1"
+  },
+  "devDependencies": {
+    "@types/picomatch": "3.0.2"
+  }
+}

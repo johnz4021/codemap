@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "question": "What happens when a patient converts? Does the welcome email go out?",
+  "areas": [
+    { "id": "patients", "label": "Patients" },
+    { "id": "events", "label": "Events" },
+    { "id": "automations", "label": "Automations" },
+    { "id": "jobs", "label": "Background jobs" }
+  ],
+  "nodes": [
+    {
+      "id": "s1", "area": "patients", "kind": "entry", "name": "Staff clicks Convert",
+      "symbol": "src/ui/PatientHeader.tsx#PatientHeader",
+      "explain": { "concept": "Staff mark a lead as converted from the patient page." },
+      "evidence": [{ "file": "src/ui/PatientHeader.tsx", "line": 4, "text": "Mark as converted" }]
+    },
+    {
+      "id": "s2", "area": "patients", "name": "Server gets the request",
+      "symbol": "src/server/routes.ts#convertPatient",
+      "evidence": [{ "file": "src/server/routes.ts", "line": 6, "text": "app.post('/api/patients/:id/convert', convertPatient)" }]
+    },
+    {
+      "id": "s3", "area": "patients", "name": "Patient enrolled",
+      "symbol": "src/patients/service.ts#markConverted",
+      "evidence": [{ "file": "src/patients/service.ts", "line": 5, "text": "db.update('patients'" }]
+    },
+    {
+      "id": "s4", "area": "events", "name": "Announces “converted”",
+      "symbol": "src/patients/service.ts#markConverted",
+      "evidence": [{ "file": "src/patients/service.ts", "line": 6, "text": "bus.emit('patient.converted'" }]
+    },
+    {
+      "id": "u1", "area": "automations", "name": "Check the rules",
+      "symbol": "src/automations/evaluate.ts#evaluateRules",
+      "evidence": [{ "file": "src/automations/evaluate.ts", "line": 4, "text": "export async function evaluateRules" }]
+    },
+    {
+      "id": "u2", "area": "automations", "name": "Queue the email",
+      "symbol": "src/jobs/queue.ts#queueEmail",
+      "evidence": [{ "file": "src/jobs/queue.ts", "line": 3, "text": "export async function queueEmail" }]
+    },
+    {
+      "id": "u3", "area": "automations", "name": "Send welcome email",
+      "symbol": "src/email/send.ts#sendEmail",
+      "evidence": [{ "file": "src/email/send.ts", "line": 1, "text": "export async function sendEmail" }]
+    },
+    {
+      "id": "j1", "area": "jobs", "kind": "job", "name": "Nightly job · 2:00 am",
+      "symbol": "src/jobs/nightly.ts#runNightly",
+      "evidence": [{ "file": "src/jobs/nightly.ts", "line": 5, "text": "export const schedule = '0 2 * * *'" }]
+    }
+  ],
+  "edges": [
+    { "id": "e12", "from": "s1", "to": "s2", "kind": "request", "label": "sends request",
+      "evidence": [{ "file": "src/ui/PatientHeader.tsx", "line": 3, "text": "fetch(`/api/patients/${patientId}/convert`" }] },
+    { "id": "e23", "from": "s2", "to": "s3", "kind": "calls", "label": "calls",
+      "evidence": [{ "file": "src/server/routes.ts", "line": 9, "text": "await markConverted(req.params.id)" }] },
+    { "id": "e34", "from": "s3", "to": "s4", "kind": "then", "label": "announces",
+      "evidence": [{ "file": "src/patients/service.ts", "line": 6, "text": "bus.emit('patient.converted'" }] },
+    { "id": "eu12", "from": "u1", "to": "u2", "kind": "calls", "label": "if a rule matches",
+      "evidence": [{ "file": "src/automations/evaluate.ts", "line": 6, "text": "await queueEmail(patientId, rule.template)" }] },
+    { "id": "eu23", "from": "u2", "to": "u3", "kind": "calls", "label": "sends",
+      "evidence": [{ "file": "src/jobs/queue.ts", "line": 4, "text": "await sendEmail(patientId, template)" }] },
+    { "id": "ej", "from": "j1", "to": "u1", "kind": "calls", "label": "every night",
+      "evidence": [{ "file": "src/jobs/nightly.ts", "line": 10, "text": "await evaluateRules({ patientId: patient.id })" }] }
+  ],
+  "absences": [
+    {
+      "id": "miss", "claim": "Nothing listens for patient.converted",
+      "between": { "from": "s4", "to": "u1" },
+      "search": { "pattern": "\\.on\\(\\s*['\"`]patient\\.converted", "regex": true, "paths": ["src/**"] },
+      "matches": 0
+    }
+  ],
+  "tour": [
+    {
+      "id": "t1", "title": "What this map shows",
+      "text": "This map follows what happens when staff mark a patient as converted. It has three areas: Patients, Events and Automations.",
+      "focus": { "areas": ["patients", "events", "automations"] }
+    },
+    {
+      "id": "t5", "title": "Nobody is listening",
+      "text": "The automation rules are supposed to react to that announcement, but nothing in the app is subscribed to it.",
+      "focus": { "nodes": ["s4", "u1"], "absences": ["miss"] },
+      "terms": ["event bus"],
+      "ask": ["Where are the rules run today?", "What would connecting them change?"]
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "name": "codemap",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "npm test --workspaces --if-present",
+    "typecheck": "tsc -p packages/facts && tsc -p packages/core && tsc -p packages/server && tsc -p packages/viewer",
+    "build": "npm run build -w @codemap/viewer",
+    "codemap": "node packages/server/bin/codemap.mjs",
+    "preview": "npm run build && tsx packages/server/scripts/preview.ts"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "typescript": "5.9.3",
+    "vitest": "2.1.9"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Northside Care · Patients</title>
+<style>
+  /* A stand-in frontend for the care-app example: what staff see. Everything runs in this page; nothing is sent. */
+  :root {
+    --bg: #f5f6f4; --surface: #ffffff; --ink: #1d2420; --muted: #66706a; --line: #dde2de;
+    --brand: #2f6b4f; --brand-soft: #e6f0ea; --warn: #9a5b12; --warn-soft: #fbf1e2;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111513; --surface: #181e1b; --ink: #e4ebe6; --muted: #98a39c; --line: #2a332e; --brand: #6fc29a; --brand-soft: #18291f; --warn: #e3a54a; --warn-soft: #2e2311; color-scheme: dark; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display: flex; align-items: center; gap: 24px; padding: 14px 24px; background: var(--surface); border-bottom: 1px solid var(--line); }
+  .logo { font-weight: 700; font-size: 17px; color: var(--brand); letter-spacing: -0.01em; }
+  nav { display: flex; gap: 18px; color: var(--muted); }
+  nav span.on { color: var(--ink); font-weight: 600; }
+  .who { margin-left: auto; width: 32px; height: 32px; border-radius: 50%; background: var(--brand-soft); color: var(--brand); display: grid; place-items: center; font-weight: 600; }
+  main { max-width: 1080px; margin: 0 auto; padding: 28px 24px 60px; display: grid; gap: 20px; grid-template-columns: 1.5fr 1fr; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  h1 { grid-column: 1 / -1; margin: 0; font-size: 24px; letter-spacing: -0.01em; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
+  .card h2 { margin: 0 0 4px; font-size: 15px; }
+  .card p.sub { margin: 0 0 14px; color: var(--muted); font-size: 13px; }
+  ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .patient { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center; padding: 12px; border: 1px solid var(--line); border-radius: 10px; }
+  .patient strong { display: block; }
+  .patient .email { color: var(--muted); font-size: 12.5px; }
+  .badge { font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: var(--bg); color: var(--muted); border: 1px solid var(--line); }
+  .badge.enrolled { background: var(--brand-soft); color: var(--brand); border-color: transparent; }
+  button { font: inherit; font-size: 13px; font-weight: 600; border: 0; border-radius: 8px; padding: 8px 12px; background: var(--brand); color: var(--surface); cursor: pointer; }
+  button:disabled { background: var(--line); color: var(--muted); cursor: default; }
+  button:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+  .rule { display: grid; gap: 6px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; }
+  .rule .when { font-weight: 600; }
+  .rule .on { justify-self: start; font-size: 12px; font-weight: 600; color: var(--brand); background: var(--brand-soft); padding: 2px 8px; border-radius: 999px; }
+  .outbox li { padding: 10px 12px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted); }
+  .note { margin-top: 12px; font-size: 13px; color: var(--warn); background: var(--warn-soft); border-radius: 8px; padding: 10px 12px; display: none; }
+  .note.show { display: block; }
+  .side { display: grid; gap: 20px; align-content: start; }
+</style>
+</head>
+<body>
+<header>
+  <span class="logo">Northside Care</span>
+  <nav aria-label="Main"><span class="on">Patients</span><span>Care journeys</span><span>Automations</span><span>Messages</span></nav>
+  <span class="who" aria-hidden="true">JS</span>
+</header>
+<main>
+  <h1>Patients</h1>
+
+  <section class="card" aria-labelledby="p">
+    <h2 id="p">New leads</h2>
+    <p class="sub">Mark someone as converted once they've signed up for care.</p>
+    <ul id="patients"></ul>
+  </section>
+
+  <div class="side">
+    <section class="card" aria-labelledby="a">
+      <h2 id="a">Automations</h2>
+      <p class="sub">Run automatically, set up by the care team.</p>
+      <div class="rule">
+        <span class="when">When a patient converts</span>
+        <span>→ Send the "Welcome to your care team" email</span>
+        <span class="on">Active</span>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="o">
+      <h2 id="o">Email outbox</h2>
+      <p class="sub">Emails sent to patients.</p>
+      <ul class="outbox"><li>No emails sent yet.</li></ul>
+      <p class="note" id="note" role="status">A patient converted, but no welcome email went out, even though the automation is active.</p>
+    </section>
+  </div>
+</main>
+<script>
+  const patients = [
+    { id: 'p1', name: 'Maya Chen', email: 'maya.chen@example.com', status: 'lead' },
+    { id: 'p2', name: 'Jordan Alvarez', email: 'jordan.alvarez@example.com', status: 'lead' },
+    { id: 'p3', name: 'Sam Okafor', email: 'sam.okafor@example.com', status: 'lead' },
+  ];
+  const list = document.getElementById('patients');
+  const note = document.getElementById('note');
+
+  // Same as the example app: converting marks the patient enrolled and announces it, but nothing listens,
+  // so the welcome email never goes out.
+  function convert(id) {
+    const p = patients.find((x) => x.id === id);
+    if (p) p.status = 'enrolled';
+    note.classList.add('show');
+    render();
+  }
+
+  function render() {
+    list.replaceChildren(...patients.map((p) => {
+      const li = document.createElement('li');
+      li.className = 'patient';
+      const who = document.createElement('div');
+      who.innerHTML = '<strong></strong><span class="email"></span>';
+      who.querySelector('strong').textContent = p.name;
+      who.querySelector('.email').textContent = p.email;
+      const badge = document.createElement('span');
+      badge.className = `badge ${p.status}`;
+      badge.textContent = p.status === 'enrolled' ? 'Enrolled' : 'Lead';
+      const button = document.createElement('button');
+      button.textContent = p.status === 'enrolled' ? 'Converted' : 'Mark as converted';
+      button.disabled = p.status === 'enrolled';
+      button.onclick = () => convert(p.id);
+      li.append(who, badge, button);
+      return li;
+    }));
+  }
+  render();
+</script>
+</body>
+</html>

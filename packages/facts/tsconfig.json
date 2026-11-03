@@ -1,0 +1,5 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "include": ["src", "test", "vitest.config.ts"],
+  "exclude": ["test/alias-repo", "test/fixture-py", "test/fixture-go"]
+}
