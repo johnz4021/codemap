@@ -1,11 +1,34 @@
 // The explorer's head start: what a quick deterministic scan already knows (ways in, routes, which requests hit which
 // routes, which tables are written), so Claude spends its reading on the question instead of on finding the edges.
 import * as fs from 'node:fs';
-import { findFetchSites, initTreeSitter, matchRoute, scanRepoFacts, type RepoScan } from '@codemap/facts';
+import { findFetchSites, initTreeSitter, matchRoute, scanRepoFacts, type RepoScan } from '@illuminate/facts';
 
 const MAX_LINES = 40;
-const section = (title: string, lines: string[]) =>
-  lines.length ? [`${title}:`, ...lines.slice(0, MAX_LINES), ...(lines.length > MAX_LINES ? [`  …and ${lines.length - MAX_LINES} more`] : []), ''] : [];
+/** The function index can be longer: it's what keeps citations exact, and input is cheap next to output. */
+const MAX_SYMBOL_FILES = 150;
+const MAX_SYMBOLS_PER_FILE = 40;
+const CITABLE = new Set(['function', 'method', 'component', 'class']);
+const TEST_FILE = /(^|\/)(test|tests|__tests__|fixtures?)\/|\.(test|spec)\.[cm]?[jt]sx?$/;
+const section = (title: string, lines: string[], max = MAX_LINES) =>
+  lines.length ? [`${title}:`, ...lines.slice(0, max), ...(lines.length > max ? [`  …and ${lines.length - max} more`] : []), ''] : [];
+
+/**
+ * Every function a box can name as its `symbol`, by file, exactly as the checker knows them (`startServer.startMap`
+ * for a function inside `startServer`). Test files and anonymous callbacks are left out.
+ */
+export function symbolIndex(scan: RepoScan): string[] {
+  return Object.values(scan.fileFacts)
+    .filter((f) => !TEST_FILE.test(f.path))
+    .map((f) => ({ path: f.path, names: f.symbols.filter((s) => CITABLE.has(s.kind) && !s.name.includes('<')).map((s) => s.name) }))
+    .filter((f) => f.names.length)
+    .sort((a, b) => a.path.localeCompare(b.path))
+    .map((f) => `  - ${f.path}: ${f.names.slice(0, MAX_SYMBOLS_PER_FILE).join(', ')}${f.names.length > MAX_SYMBOLS_PER_FILE ? `, …and ${f.names.length - MAX_SYMBOLS_PER_FILE} more` : ''}`);
+}
+
+/** Function names by file, for suggesting the real name when a claim cites one the code doesn't have. */
+export function symbolIndexOf(scan: RepoScan | null): (file: string) => readonly string[] {
+  return (file) => scan?.fileFacts[file]?.symbols.filter((s) => CITABLE.has(s.kind) && !s.name.includes('<')).map((s) => s.name) ?? [];
+}
 
 export async function headStart(root: string): Promise<{ text: string; scan: RepoScan | null }> {
   await initTreeSitter();
@@ -49,6 +72,7 @@ export async function headStart(root: string): Promise<{ text: string; scan: Rep
     ...section('Requests from the code that match a route', requests),
     ...section('Tables and what writes them', tables),
     ...section('Top-level folders', folderLines),
+    ...section('Functions by file (use these exact names for `symbol`)', symbolIndex(scan), MAX_SYMBOL_FILES),
   ].join('\n');
   return { text: text || '(The automatic scan found no entry points; explore the repo directly.)', scan };
 }

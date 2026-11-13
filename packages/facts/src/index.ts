@@ -1,4 +1,4 @@
-// @codemap/facts: what the code says, read deterministically. Imports, symbols, calls, routes, table reads and writes,
+// @illuminate/facts: what the code says, read deterministically. Imports, symbols, calls, routes, table reads and writes,
 // and fetch → route links for TS/JS (oxc) and Python/Go (tree-sitter). No model calls.
 export type * from './contracts/facts';
 export { diffSymbols } from './facts/diff';

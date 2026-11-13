@@ -2,8 +2,8 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { check, parseMap } from '@codemap/core';
-import { currentView, initialState, reducer, stopView, type State } from '../src/state';
+import { check, parseMap } from '@illuminate/core';
+import { addedIds, currentView, initialState, layersOf, reducer, stopView, visibleMap, type State } from '../src/state';
 import type { Answer, FixProposal } from '../src/types';
 
 const APP = fileURLToPath(new URL('../../core/test/fixtures/care-app', import.meta.url));
@@ -22,8 +22,8 @@ const fix: FixProposal = {
   connects: { from: 's4', to: 'u1', label: 'now listens', evidenceFile: 'x.ts', evidenceText: 'bus.on' },
 };
 const answer = (over: Partial<Answer> = {}): Answer => ({
-  id: 'a1', question: 'q', selection: {}, concept: 'c', how: '', code: '', refs: [], followUps: [],
-  moves: { focus: 's4', highlight: ['s4', 'miss'] }, added: [], problems: [], fix: null, cost: 0, ...over,
+  id: 'a1', question: 'q', selection: {}, concept: 'c', refs: [],
+  moves: { focus: 's4', highlight: ['s4', 'miss'] }, added: [], problems: [], fix: null, source: 'code', cost: 0, ...over,
 });
 
 describe('reducer', () => {
@@ -73,12 +73,67 @@ describe('reducer', () => {
     expect(currentView(s)).toEqual({ focus: 's4', highlight: ['s4', 'miss', 'n9'] });
   });
 
+  it('closing an answer goes back to the whole map, with the walkthrough on offer again', () => {
+    let s = reducer(ready(), { type: 'event', event: { type: 'answer', mapId: 'patient-converts', answer: answer({ added: ['n9'] }) } });
+    s = reducer(s, { type: 'select', kind: 'nodes', id: 's1', additive: false });
+    s = reducer(s, { type: 'overview' });
+    expect(s).toMatchObject({ shown: null, tour: null, fresh: [], selection: { nodes: [], edges: [], absences: [] } });
+    expect(currentView(s)).toEqual({ focus: null, highlight: [] });
+    expect(s.answers).toHaveLength(1); // still there to reopen
+  });
+
+  it('going back to an earlier reply lights up what it was about again', () => {
+    let s = reducer(ready(), { type: 'event', event: { type: 'answer', mapId: 'patient-converts', answer: answer({ id: 'a1' }) } });
+    s = reducer(s, { type: 'overview' });
+    expect(currentView(s)).toEqual({ focus: null, highlight: [] });
+    s = reducer(s, { type: 'show', answerId: 'a1' });
+    expect(s.shown).toBe('a1');
+    expect(currentView(s)).toEqual({ focus: 's4', highlight: ['s4', 'miss'] });
+  });
+
+  it('updates an answer in place when its offer of a new map is taken up', () => {
+    const offer = { question: 'How do invoices get sent?', existing: null, status: 'pending' as const, mapId: null };
+    let s = reducer(ready(), { type: 'event', event: { type: 'answer', mapId: 'patient-converts', answer: answer({ id: 'a1', concept: '', offer }) } });
+    s = reducer(s, { type: 'event', event: { type: 'answerUpdate', mapId: 'patient-converts', answer: answer({ id: 'a1', concept: '', offer: { ...offer, status: 'mapped', mapId: 'invoices' } }) } });
+    expect(s.answers).toHaveLength(1);
+    expect(s.answers[0]!.offer).toMatchObject({ status: 'mapped', mapId: 'invoices' });
+    expect(s.shown).toBe('a1');
+  });
+
+  it('a reopened map starts at its overview, not at the last answer', () => {
+    const s = reducer(initialState('patient-converts'), { type: 'loaded', payload: { meta, map, report, job: null, failure: null, answers: [answer()] } });
+    expect(s.shown).toBeNull();
+    expect(s.answers).toHaveLength(1);
+  });
+
+  it('shows or hides what each answer added, back to the original map', () => {
+    const grown = {
+      ...map,
+      nodes: [...map.nodes, { ...map.nodes[0]!, id: 'n9' }],
+      edges: [...map.edges, { ...map.edges[0]!, id: 'e9', from: 's4', to: 'n9' }],
+    };
+    let s = reducer(initialState('patient-converts'), { type: 'loaded', payload: { meta, map: grown, report, job: null, failure: null, answers: [answer({ id: 'a1', question: 'Where?', added: ['n9', 'e9', 'gone'] }), answer({ id: 'a2' })] } });
+    expect(layersOf(s)).toEqual([{ answerId: 'a1', question: 'Where?', ids: ['n9', 'e9'], visible: true }]); // only what's still on the map
+    expect(addedIds(s)).toEqual(['n9', 'e9']);
+    expect(visibleMap(s)).toBe(s.map);
+
+    s = reducer(s, { type: 'select', kind: 'nodes', id: 'n9', additive: false });
+    s = reducer(s, { type: 'layer', answerId: 'a1', visible: false });
+    expect(visibleMap(s)!.nodes.map((n) => n.id)).toEqual(map.nodes.map((n) => n.id));
+    expect(visibleMap(s)!.edges.map((e) => e.id)).toEqual(map.edges.map((e) => e.id));
+    expect(s.selection.nodes).toEqual([]); // a hidden box can't stay selected
+    expect(addedIds(s)).toEqual(['n9', 'e9']); // the layout still knows what was added
+
+    s = reducer(s, { type: 'allLayers', visible: true });
+    expect(visibleMap(s)!.nodes).toHaveLength(map.nodes.length + 1);
+  });
+
   it('tracks a fix from proposal to applied, and focuses the new connection', () => {
     let s = reducer(ready(), { type: 'event', event: { type: 'answer', mapId: 'patient-converts', answer: answer({ fix }) } });
     expect(s.fixes['fix-1']!.status).toBe('proposed');
     s = reducer(s, { type: 'fixStatus', fixId: 'fix-1', status: 'applying' });
     s = reducer(s, { type: 'event', event: { type: 'fix', mapId: 'patient-converts', fixId: 'fix-1', status: 'applied', edgeId: 'fx1', closed: ['miss'] } });
-    expect(s.fixes['fix-1']).toMatchObject({ status: 'applied', edgeId: 'fx1', closed: ['miss'] });
+    expect(s.fixes['fix-1']).toMatchObject({ status: 'applied', edgeId: 'fx1', closed: ['miss'], undoable: true });
     expect(currentView(s)).toEqual({ focus: 'fx1', highlight: ['fx1', 's4', 'u1'] });
   });
 
@@ -86,9 +141,9 @@ describe('reducer', () => {
     const answers = [answer({ id: 'a1', fix }), answer({ id: 'a2', fix: { ...fix, id: 'fix-2' } }), answer({ id: 'a3', fix: { ...fix, id: 'fix-3' } })];
     const s = reducer(initialState('patient-converts'), {
       type: 'loaded',
-      payload: { meta, map, report, job: null, failure: null, answers, fixes: { 'fix-1': { status: 'applied', edgeId: 'fx1', closed: ['miss'] }, 'fix-2': { status: 'proposed' } } },
+      payload: { meta, map, report, job: null, failure: null, answers, fixes: { 'fix-1': { status: 'applied', edgeId: 'fx1', closed: ['miss'], undoable: false }, 'fix-2': { status: 'proposed' } } },
     });
-    expect(s.fixes['fix-1']).toMatchObject({ status: 'applied', edgeId: 'fx1', closed: ['miss'] });
+    expect(s.fixes['fix-1']).toMatchObject({ status: 'applied', edgeId: 'fx1', closed: ['miss'], undoable: false }); // applied before a restart
     expect(s.fixes['fix-2']!.status).toBe('proposed');
     expect(s.fixes['fix-3']!.status).toBe('rejected');
   });

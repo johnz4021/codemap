@@ -1,5 +1,5 @@
 {
-  "name": "@codemap/facts",
+  "name": "@illuminate/facts",
   "private": true,
   "type": "module",
   "main": "src/index.ts",

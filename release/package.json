@@ -1,0 +1,45 @@
+{
+  "name": "@johnz4021/illuminate",
+  "version": "0.1.0",
+  "description": "Checked, interactive maps of how your code works, drawn by your own Claude Code session.",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/johnz4021/codemap.git"
+  },
+  "homepage": "https://github.com/johnz4021/codemap#readme",
+  "keywords": [
+    "claude-code",
+    "mcp",
+    "code-review",
+    "architecture",
+    "diagram"
+  ],
+  "bin": {
+    "illume": "bin/illume.mjs"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "viewer",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20.19"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.296",
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "@vscode/tree-sitter-wasm": "0.3.1",
+    "es-module-lexer": "1.7.0",
+    "get-tsconfig": "4.14.3",
+    "oxc-parser": "0.153.0",
+    "oxc-resolver": "11.24.2",
+    "picomatch": "4.0.7",
+    "ws": "8.22.0",
+    "yaml": "2.9.1",
+    "zod": "4.6.6"
+  }
+}

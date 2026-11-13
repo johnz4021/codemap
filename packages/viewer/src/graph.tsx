@@ -1,10 +1,10 @@
 // The map itself: areas as containers, steps as boxes, labeled arrows, missing connections as red dashed arrows and a
-// proposed fix as a green dashed one. Click to select (shift-click adds); Pick mode drags a box around a region.
+// proposed fix as a green dashed one. Click to select (shift-click adds).
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Background,
+  BackgroundVariant,
   BaseEdge,
-  Controls,
   EdgeLabelRenderer,
   Handle,
   MarkerType,
@@ -12,14 +12,14 @@ import {
   ReactFlow,
   getBezierPath,
   useReactFlow,
+  useStore,
   type Edge,
   type EdgeProps,
   type Node,
   type NodeProps,
-  type OnSelectionChangeParams,
 } from '@xyflow/react';
 import { layoutKey, layoutMap, sides, type ExtraEdge, type Layout } from './layout';
-import { emptySel, type Sel, type View } from './state';
+import type { Sel, View } from './state';
 import type { CheckReport, CodeMap, FixProposal } from './types';
 
 const cls = (...xs: (string | false | null | undefined)[]) => xs.filter(Boolean).join(' ');
@@ -29,6 +29,8 @@ type StepData = {
   sub: string;
   kind: string;
   confirmed: boolean;
+  /** It has a confirmed picture of the screen, shown when the box is selected or the walkthrough stops on it. */
+  screen: boolean;
   selected: boolean;
   hl: boolean;
   dim: boolean;
@@ -51,7 +53,13 @@ type StepNodeT = Node<StepData, 'step'>;
 type AreaNodeT = Node<AreaData, 'area'>;
 type LinkEdgeT = Edge<LinkData, 'link'>;
 
-const KIND: Record<string, string> = { entry: 'way in', store: 'store', external: 'outside', job: 'job' };
+/** What kind of box it is, in words, and the little mark drawn beside it. */
+const KIND: Record<string, [label: string, mark: string]> = {
+  entry: ['Where it starts', '▸'],
+  store: ['Saved data', '▤'],
+  external: ['Outside the app', '↗'],
+  job: ['Background job', '◷'],
+};
 
 const SIDES = [['t', Position.Top], ['r', Position.Right], ['b', Position.Bottom], ['l', Position.Left]] as const;
 
@@ -76,14 +84,19 @@ function StepNode({ data }: NodeProps<StepNodeT>) {
       }}
     >
       <Handles />
-      {KIND[data.kind] && <span className="step-kind">{KIND[data.kind]}</span>}
+      {/* Plain steps need no label; the other kinds say what they are. */}
+      {(KIND[data.kind] || data.fresh || data.screen) && (
+        <div className="step-head">
+          {KIND[data.kind] && <><i className="step-mark" aria-hidden="true">{KIND[data.kind]![1]}</i>{KIND[data.kind]![0]}</>}
+          {data.screen && <span className="badge-screen" title="Select this step to see the screen">▣ Screen</span>}
+          {data.fresh && <span className="badge-new">New</span>}
+        </div>
+      )}
       <div className="step-name" title={data.name}>{data.name}</div>
-      <div className="step-sub">{data.sub}</div>
-      {data.fresh ? (
-        <span className="badge badge-new">NEW</span>
-      ) : !data.confirmed ? (
-        <span className="badge badge-q" title="The checker couldn't confirm this against the code">?</span>
-      ) : null}
+      <div className="step-code" title={data.confirmed ? 'Confirmed against the code' : "The checker couldn't confirm this against the code"}>
+        <span className={data.confirmed ? 'tick' : 'qmark'}>{data.confirmed ? '✓' : '?'}</span>
+        <span className="step-sub">{data.sub}</span>
+      </div>
     </div>
   );
 }
@@ -93,7 +106,7 @@ function AreaNode({ data }: NodeProps<AreaNodeT>) {
     <div className={cls('area', data.dim && 'dim')}>
       <div className="area-label">
         {data.label}
-        {data.note && <span className="area-note"> · {data.note}</span>}
+        {data.note && <span className="area-note"> {data.note}</span>}
       </div>
     </div>
   );
@@ -127,7 +140,8 @@ function LinkEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targ
             data.onClick?.(e.shiftKey || e.metaKey);
           }}
         >
-          {data.label}
+          {data.variant === 'absence' && <span className="gap-q" aria-hidden="true">?</span>}
+          <span className="link-text">{data.label}</span>
           {!data.confirmed && data.variant === 'edge' && <span className="q"> ?</span>}
         </div>
       </EdgeLabelRenderer>
@@ -144,10 +158,12 @@ export type GraphProps = {
   selection: Sel;
   view: View | null;
   fresh: string[];
+  /** What answers added: laid out around the original map so its boxes don't move. */
+  added: readonly string[];
   ghost: FixProposal | null;
-  pick: boolean;
+  /** The walkthrough is running: keep what it lights up clear of its bubble, bottom left. */
+  touring: boolean;
   onSelect: (kind: keyof Sel, id: string, additive: boolean) => void;
-  onSelectMany: (s: Sel) => void;
   onClear: () => void;
 };
 
@@ -164,17 +180,22 @@ function nodesOf(map: CodeMap, ids: readonly string[]): string[] {
   return [...out];
 }
 
+/** Room the camera leaves on the left for the walkthrough bubble (its width plus a margin). */
+const TOUR_ROOM = '440px';
+
 const shortClaim = (claim: string) => (claim.length > 28 ? `${claim.slice(0, 26)}…` : claim);
 
 export function MapGraph(p: GraphProps) {
-  const extra: ExtraEdge[] = useMemo(() => (p.ghost?.connects ? [{ id: p.ghost.id, from: p.ghost.connects.from, to: p.ghost.connects.to }] : []), [p.ghost]);
-  const key = layoutKey(p.map, extra);
+  // A proposed fix's arrow is drawn only while both of its ends are (a hidden layer can hide one).
+  const ghost = p.ghost?.connects && p.map.nodes.some((n) => n.id === p.ghost!.connects!.from) && p.map.nodes.some((n) => n.id === p.ghost!.connects!.to) ? p.ghost : null;
+  const extra: ExtraEdge[] = useMemo(() => (ghost?.connects ? [{ id: ghost.id, from: ghost.connects.from, to: ghost.connects.to }] : []), [ghost]);
+  const key = layoutKey(p.map, extra, p.added);
   const [layout, setLayout] = useState<{ key: string; layout: Layout } | null>(null);
   const rf = useReactFlow();
 
   useEffect(() => {
     let live = true;
-    void layoutMap(p.map, extra).then((l) => live && setLayout({ key, layout: l }));
+    void layoutMap(p.map, extra, new Set(p.added)).then((l) => live && setLayout({ key, layout: l }));
     return () => {
       live = false;
     };
@@ -219,6 +240,7 @@ export function MapGraph(p: GraphProps) {
           sub,
           kind: n.kind,
           confirmed: p.report?.nodes[n.id]?.status === 'confirmed',
+          screen: p.report?.screens?.[n.id]?.status === 'confirmed',
           selected: sel.nodes.includes(n.id),
           hl: !!lit?.has(n.id),
           dim: !!lit && !lit.has(n.id),
@@ -251,7 +273,7 @@ export function MapGraph(p: GraphProps) {
         ...handles(e.from, e.to),
         type: 'link' as const,
         className: cls('link', `link-${variant}`, !confirmed && 'unconfirmed', on(e.id) && 'hl', !!hl && !on(e.id) && 'dim', sel.edges.includes(e.id) && 'selected'),
-        markerEnd: marker(on(e.id) ? 'var(--accent)' : 'var(--line-strong)'),
+        markerEnd: marker(on(e.id) ? 'var(--path)' : 'var(--line-strong)'),
         zIndex: 2,
         data: {
           label: e.label,
@@ -264,7 +286,7 @@ export function MapGraph(p: GraphProps) {
         },
       };
     });
-    const fixes = (a: { from: string; to: string }) => p.ghost?.connects?.from === a.from && p.ghost.connects.to === a.to;
+    const fixes = (a: { from: string; to: string }) => ghost?.connects?.from === a.from && ghost.connects.to === a.to;
     for (const a of p.map.absences) {
       if (!a.between) continue;
       // While a fix for this gap is proposed, its green arrow takes the gap's place.
@@ -280,7 +302,7 @@ export function MapGraph(p: GraphProps) {
         markerEnd: marker('var(--dead)'),
         zIndex: 2,
         data: {
-          label: `✕ ${shortClaim(a.claim)}`,
+          label: shortClaim(a.claim),
           variant: 'absence',
           confirmed,
           hl: on(a.id),
@@ -290,17 +312,17 @@ export function MapGraph(p: GraphProps) {
         },
       });
     }
-    if (p.ghost?.connects) {
+    if (ghost?.connects) {
       out.push({
-        id: `g:${p.ghost.id}`,
-        source: p.ghost.connects.from,
-        target: p.ghost.connects.to,
-        ...handles(p.ghost.connects.from, p.ghost.connects.to),
+        id: `g:${ghost.id}`,
+        source: ghost.connects.from,
+        target: ghost.connects.to,
+        ...handles(ghost.connects.from, ghost.connects.to),
         type: 'link',
         className: 'link link-ghost',
         markerEnd: marker('var(--ok)'),
         zIndex: 3,
-        data: { label: `+ ${p.ghost.connects.label}`, variant: 'ghost', confirmed: true, hl: true, dim: false, selected: false },
+        data: { label: `+ ${ghost.connects.label}`, variant: 'ghost', confirmed: true, hl: true, dim: false, selected: false },
       });
     }
     // Arrows that join the same two steps (either way round) bend apart, so each line and label stays visible.
@@ -316,11 +338,24 @@ export function MapGraph(p: GraphProps) {
       });
     }
     return out;
-  }, [layout, p.map, p.report, sel, hl, lit, p.ghost, p.onSelect]);
+  }, [layout, p.map, p.report, sel, hl, lit, ghost, p.onSelect]);
+
+  // When the map area changes width (the panel comes and goes, or is dragged wider), keep what was in the middle in
+  // the middle, rather than letting the panel slide over the right-hand side of the map.
+  const paneWidth = useStore((st) => st.width);
+  const lastWidth = useRef(0);
+  useEffect(() => {
+    const before = lastWidth.current;
+    lastWidth.current = paneWidth;
+    if (!before || !paneWidth || before === paneWidth) return;
+    const vp = rf.getViewport();
+    void rf.setViewport({ ...vp, x: vp.x + (paneWidth - before) / 2 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paneWidth]);
 
   // The camera follows the view: fly to what's in focus, or show the whole map. It waits (a frame at a time) until
   // React Flow has measured every box, or it would fit an empty canvas.
-  const viewKey = JSON.stringify([layout?.key, p.view?.focus, p.view?.highlight]);
+  const viewKey = JSON.stringify([layout?.key, p.view?.focus, p.view?.highlight, p.touring]);
   const firstFit = useRef(true);
   useEffect(() => {
     if (!layout) return;
@@ -330,16 +365,17 @@ export function MapGraph(p: GraphProps) {
     const tick = () => {
       const ns = rf.getNodes();
       // Measurements live on React Flow's internal nodes, not on the (controlled) nodes we pass in.
-      if (!ns.length || !ns.every((n) => rf.getInternalNode(n.id)?.measured?.width)) {
+      // Two frames at least, so a canvas that just changed width (the panel hides during the walkthrough) is measured.
+      if (frame < 2 || !ns.length || !ns.every((n) => rf.getInternalNode(n.id)?.measured?.width)) {
         if (frame++ < 60) handle = requestAnimationFrame(tick);
         return;
       }
       const duration = firstFit.current ? 0 : 650;
       firstFit.current = false;
-      // Keep clear of the input bar along the bottom and the zoom controls on the right.
+      // Keep clear of the dock along the bottom.
       const padding = ids.length
-        ? ({ top: '60px', left: '60px', right: '80px', bottom: '130px' } as const)
-        : ({ top: '28px', left: '28px', right: '64px', bottom: '110px' } as const);
+        ? ({ top: '60px', left: p.touring ? TOUR_ROOM : '60px', right: '60px', bottom: '150px' } as const)
+        : ({ top: '64px', left: '32px', right: '32px', bottom: '130px' } as const); // top: the earlier-questions button
       void rf.fitView(ids.length ? { nodes: ids.map((n) => ({ id: n })), duration, padding, maxZoom: 1.15 } : { duration, padding, maxZoom: 1.1 });
     };
     handle = requestAnimationFrame(tick);
@@ -347,16 +383,6 @@ export function MapGraph(p: GraphProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewKey]);
 
-  const onSelectionChange = ({ nodes: ns, edges: es }: OnSelectionChangeParams) => {
-    if (!p.pick) return;
-    const s = emptySel();
-    for (const n of ns) if (n.type === 'step') s.nodes.push(n.id);
-    for (const e of es) {
-      if (e.id.startsWith('e:')) s.edges.push(e.id.slice(2));
-      if (e.id.startsWith('a:')) s.absences.push(e.id.slice(2));
-    }
-    if (s.nodes.length + s.edges.length + s.absences.length) p.onSelectMany(s);
-  };
 
   return (
     <ReactFlow
@@ -371,17 +397,14 @@ export function MapGraph(p: GraphProps) {
         if (edge.id.startsWith('a:')) p.onSelect('absences', edge.id.slice(2), e.shiftKey || e.metaKey);
       }}
       onPaneClick={p.onClear}
-      onSelectionChange={onSelectionChange}
-      selectionOnDrag={p.pick}
-      panOnDrag={p.pick ? [1, 2] : true}
-      elementsSelectable={p.pick}
+      panOnDrag
+      elementsSelectable={false}
       nodesDraggable={false}
       nodesConnectable={false}
       minZoom={0.15}
       maxZoom={2}
     >
-      <Background gap={24} size={1} />
-      <Controls showInteractive={false} position="bottom-right" />
+      <Background variant={BackgroundVariant.Dots} gap={22} size={1.3} />
     </ReactFlow>
   );
 }

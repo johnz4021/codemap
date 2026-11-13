@@ -20,8 +20,8 @@ export type RepoScan = { files: string[]; fileFacts: Record<string, FileFacts>; 
 
 export const CODE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.mts'];
 
-/** Never scanned: codemap's own output and common build output. */
-export const DEFAULT_IGNORE = ['.codemap/**', '**/dist/**', '**/build/**', '**/coverage/**', '**/.next/**'];
+/** Never scanned: illuminate's own output and common build output. */
+export const DEFAULT_IGNORE = ['.illuminate/**', '.codemap/**', '**/dist/**', '**/build/**', '**/coverage/**', '**/.next/**'];
 
 export function isCodeFile(path: string): boolean {
   return CODE_EXTENSIONS.some((ext) => path.endsWith(ext));

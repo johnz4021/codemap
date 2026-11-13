@@ -4,7 +4,7 @@
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { createRepoReader, freshId, isSafeRelativePath, isSecretPath, parseMap, removeAbsences, type CodeMap } from '@codemap/core';
+import { createRepoReader, freshId, isSafeRelativePath, isSecretPath, parseMap, removeAbsences, type CodeMap } from '@illuminate/core';
 import { hasUncommittedChanges } from './git';
 import type { RawFix } from './schemas';
 
@@ -32,7 +32,7 @@ const lineOf = (text: string, index: number) => text.slice(0, index).split('\n')
 
 function allowed(file: string): string | null {
   if (!isSafeRelativePath(file)) return `${file}: must be a path inside the repo`;
-  if (isSecretPath(file) || file === '.codemap' || file.startsWith('.codemap/')) return `${file}: codemap never changes this file`;
+  if (isSecretPath(file) || file === '.illuminate' || file.startsWith('.illuminate/')) return `${file}: illuminate never changes this file`;
   return null;
 }
 
@@ -121,7 +121,7 @@ export function applyFix(root: string, proposal: FixProposal): { ok: true; appli
   }
   for (const c of proposal.creates) contents.set(c.file, c.content);
 
-  const backup = path.join(root, '.codemap', 'fixes', proposal.id);
+  const backup = path.join(root, '.illuminate', 'fixes', proposal.id);
   fs.mkdirSync(backup, { recursive: true });
   fs.writeFileSync(path.join(backup, 'originals.json'), JSON.stringify({ proposal, originals }, null, 2));
   const written: AppliedFix['written'] = [];

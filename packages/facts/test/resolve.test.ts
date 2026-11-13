@@ -8,8 +8,8 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { fileExistsIn, scanRepoFacts, withExtra } from '../src/scan';
 import { resolveImport, resolveSpecifier } from '../src/imports';
 
-// Copy so the workspace shim (`.codemap/ws-modules`, written because the fixture has no node_modules) stays out of the tree.
-const root = realpathSync(mkdtempSync(join(tmpdir(), 'codemap-alias-')));
+// Copy so the workspace shim (`.illuminate/ws-modules`, written because the fixture has no node_modules) stays out of the tree.
+const root = realpathSync(mkdtempSync(join(tmpdir(), 'illuminate-alias-')));
 cpSync(fileURLToPath(new URL('./alias-repo', import.meta.url)), root, { recursive: true });
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
@@ -26,7 +26,7 @@ describe('resolveSpecifier (oxc-resolver over the alias fixture)', () => {
     expect(r('apps/web/src/main.ts', '@acme/core')).toBe('packages/core/src/index.ts');
     expect(r('apps/web/src/main.ts', '@acme/core/lib/util')).toBe('packages/core/src/lib/util.ts');
     expect(r('packages/core/src/a.ts', '#internal/util')).toBe('packages/core/src/lib/util.ts');
-    expect(existsSync(join(root, '.codemap/ws-modules/@acme/core'))).toBe(true); // no node_modules: shimmed under .codemap/
+    expect(existsSync(join(root, '.illuminate/ws-modules/@acme/core'))).toBe(true); // no node_modules: shimmed under .illuminate/
   });
 
   it('maps .js to .ts, and bare packages and builtins to vendor ids', () => {

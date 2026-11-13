@@ -1,9 +1,11 @@
 // The start page: maps already made in this repo, and a box to ask a new question.
 import { useEffect, useState } from 'react';
-import { api, pageUrl } from './api';
+import { api, connect, pageUrl } from './api';
+import { navigate } from './nav';
+import { StopButton } from './stop';
 import type { MapMeta } from './types';
 
-export function Home() {
+export function Home({ onStopped }: { onStopped: () => void }) {
   const [repo, setRepo] = useState('');
   const [maps, setMaps] = useState<MapMeta[] | null>(null);
   const [making, setMaking] = useState<{ id: string; question: string }[]>([]);
@@ -11,6 +13,8 @@ export function Home() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // Stay connected while this page is open: it keeps illuminate running, and hears when it stops.
+  useEffect(() => connect(() => {}, () => {}, onStopped), [onStopped]);
   useEffect(() => {
     api.list().then((r) => { setRepo(r.repo); setMaps(r.maps); setMaking(r.making); }, (e: Error) => setError(e.message));
   }, []);
@@ -20,7 +24,7 @@ export function Home() {
     setBusy(true);
     try {
       const { id } = await api.make(question.trim());
-      location.assign(pageUrl(id));
+      navigate(pageUrl(id));
     } catch (e) {
       setError((e as Error).message);
       setBusy(false);
@@ -29,9 +33,9 @@ export function Home() {
 
   return (
     <main className="home">
-      <div className="eyebrow">codemap{repo ? ` · ${repo}` : ''}</div>
+      <div className="home-brand"><i className="brand-mark" aria-hidden="true" />illuminate{repo && <span className="muted">{repo}</span>}</div>
       <h1>Ask how your code works</h1>
-      <p className="muted lede">Claude explores the repo and draws the answer as a map. Every box and arrow is checked against the code before you see it.</p>
+      <p className="muted lede">Every box and arrow is checked against the code.</p>
       <form className="home-ask" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
         <input id="question" value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="What happens when a user signs up?" aria-label="Your question" autoFocus />
         <button className="btn primary" disabled={busy || !question.trim()}>{busy ? 'Starting…' : 'Map it'}</button>
@@ -45,7 +49,7 @@ export function Home() {
       )}
       <section>
         <h2 className="section-title">Maps in this repo</h2>
-        {maps === null ? <p className="muted">Loading…</p> : maps.length === 0 ? <p className="muted">None yet. Ask a question above.</p> : (
+        {maps === null ? <p className="muted">Loading…</p> : maps.length === 0 ? <p className="muted">None yet.</p> : (
           <ul className="maplist">
             {maps.map((m) => (
               <li key={m.id}>
@@ -56,6 +60,9 @@ export function Home() {
           </ul>
         )}
       </section>
+      <footer className="home-foot">
+        <StopButton busy={making.length > 0} onStopped={onStopped} onError={setError} />
+      </footer>
     </main>
   );
 }

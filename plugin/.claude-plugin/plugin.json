@@ -1,0 +1,16 @@
+{
+  "name": "illuminate",
+  "version": "0.1.0",
+  "description": "Checked, interactive maps of how your code works. Ask how something works and your Claude Code session draws a map in your browser; a program checks every box and arrow against the code.",
+  "author": { "name": "johnz4021" },
+  "homepage": "https://github.com/johnz4021/codemap#readme",
+  "repository": "https://github.com/johnz4021/codemap",
+  "license": "MIT",
+  "keywords": ["code-review", "architecture", "diagram", "onboarding"],
+  "mcpServers": {
+    "illuminate": {
+      "command": "npx",
+      "args": ["-y", "@johnz4021/illuminate@0.1.0", "channel"]
+    }
+  }
+}

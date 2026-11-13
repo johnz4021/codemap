@@ -1,6 +1,13 @@
 node_modules/
-.codemap/
+.illuminate/
 dist/
 coverage/
 *.log
 .DS_Store
+/.env
+
+# Built by scripts/release.mjs
+/release/viewer/
+/release/README.md
+/release/LICENSE
+*.tgz

@@ -13,7 +13,7 @@ export type RepoResolverLike = {
   clear(): void;
 };
 
-const KEY = Symbol.for('codemap.repoResolver');
+const KEY = Symbol.for('illuminate.repoResolver');
 
 type Carrier = { [KEY]?: () => RepoResolverLike };
 
@@ -36,7 +36,7 @@ export function carryResolver<T extends object>(fn: T, from: object): T {
   return get ? attachResolver(fn, get) : fn;
 }
 
-const ROOT = Symbol.for('codemap.repoRoot');
+const ROOT = Symbol.for('illuminate.repoRoot');
 
 /** Attach the repo root an `Exists` checks against (Python and Go extraction list and read package files). */
 export function attachRoot<T extends object>(fn: T, root: string): T {

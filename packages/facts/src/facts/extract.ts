@@ -137,6 +137,7 @@ function customRoutes(path: string, code: string, patterns: readonly { file: str
 type N = { type: string; start: number; end: number; [key: string]: any };
 
 const FN = new Set(['ArrowFunctionExpression', 'FunctionExpression']);
+const FN_KINDS = new Set<SymbolKind>(['function', 'method', 'component']);
 const SKIP_KEYS = new Set(['typeAnnotation', 'returnType', 'typeParameters', 'typeArguments', 'superTypeArguments', 'implements']);
 const WRAPPERS = new Set(['TSAsExpression', 'TSSatisfiesExpression', 'TSNonNullExpression', 'ParenthesizedExpression', 'TSTypeAssertion', 'TSInstantiationExpression', 'ChainExpression']);
 const ROUTE_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete', 'options', 'head', 'all']);
@@ -176,6 +177,8 @@ class Walker {
   private nodeSym = new WeakMap<object, string>();
   private current: SymbolFact | null = null;
   private cls: SymbolFact | null = null;
+  /** Named functions declared directly in each enclosing function's body (name → id), innermost last. */
+  private locals: Map<string, string>[] = [];
   private resolved = new Map<string, string | null>();
   private jsx: boolean;
 
@@ -366,7 +369,33 @@ class Walker {
     const k = kind ?? (this.jsx && /^[A-Z]/.test(name) ? 'component' : 'function');
     const sym = this.define(name, k, exported, parent, span, this.fnSig(node), this.text(node.body));
     this.nodeSym.set(node, sym.id);
+    this.locals.push(this.localFns(node, sym));
     this.inside(sym, () => this.fnBody(node));
+    this.locals.pop();
+  }
+
+  /**
+   * The functions declared directly in `node`'s body (`function a() {}`, `const b = () => {}`), with the ids they'll get
+   * as nested symbols (`outer.a`), so calls between them resolve even before the declaration (hoisting). A name
+   * declared twice is ambiguous and left out.
+   */
+  private localFns(node: N, sym: SymbolFact): Map<string, string> {
+    const out = new Map<string, string>();
+    const twice = new Set<string>();
+    const add = (name: string) => {
+      if (out.has(name) || twice.has(name)) {
+        out.delete(name);
+        twice.add(name);
+      } else out.set(name, `${this.path}#${sym.name}.${name}`);
+    };
+    const body = node.body?.type === 'BlockStatement' ? (node.body.body as N[]) : [];
+    for (const st of body) {
+      if (st.type === 'FunctionDeclaration' && st.id && st.body) add(st.id.name);
+      else if (st.type === 'VariableDeclaration') {
+        for (const d of st.declarations as N[]) if (d.id.type === 'Identifier' && FN.has(unwrap(d.init)?.type ?? '')) add(d.id.name);
+      }
+    }
+    return out;
   }
 
   private klass(name: string, node: N, exported: boolean, span: N) {
@@ -438,6 +467,9 @@ class Walker {
 
   private fnBody(f: N) {
     for (const p of f.params ?? []) this.visit(p);
+    // `() => ({ save() {} })`: a function that returns an object of functions names them like a return statement does.
+    const body = unwrap(f.body);
+    if (body?.type === 'ObjectExpression' && this.current) return this.members(body, this.current, '');
     this.visit(f.body);
   }
 
@@ -458,9 +490,24 @@ class Walker {
           return this.fn(`<cb${this.cbCount}>`, node, false, null, node, 'function');
         }
         break;
-      case 'VariableDeclarator':
-        this.capture(node);
+      // Named functions inside a function are symbols too (`startServer.startMap`), so a map can cite them; calls made in
+      // them belong to them. Anonymous callbacks still fold into the function around them.
+      case 'FunctionDeclaration':
+        if (this.current && node.id && node.body) return this.fn(node.id.name, node, false, this.current, node);
         break;
+      case 'VariableDeclarator': {
+        this.capture(node);
+        const init = unwrap(node.init);
+        if (this.current && node.id?.type === 'Identifier' && init && FN.has(init.type)) return this.fn(node.id.name, init, false, this.current, node);
+        break;
+      }
+      // A function returning an object of functions (a factory: `return { get() {}, save: () => {} }`) names them
+      // `createStore.save`.
+      case 'ReturnStatement': {
+        const arg = unwrap(node.argument);
+        if (this.current && arg?.type === 'ObjectExpression' && FN_KINDS.has(this.current.kind)) return this.members(arg, this.current, '');
+        break;
+      }
       case 'ImportDeclaration':
       case 'TSInterfaceDeclaration':
       case 'TSTypeAliasDeclaration':
@@ -520,6 +567,11 @@ class Walker {
     if (!root) return null;
     if (root.type === 'ThisExpression') return this.cls && chain.length ? `${this.path}#${[this.cls.name, ...chain].join('.')}` : null;
     if (root.type !== 'Identifier') return null;
+    // A function declared in an enclosing function's body shadows imports and top-level names.
+    for (let i = this.locals.length - 1; i >= 0; i--) {
+      const local = this.locals[i]!.get(root.name);
+      if (local) return [local, ...chain].join('.');
+    }
     const b = this.bindings.get(root.name);
     if (b) return this.linkImport(b, chain);
     return this.topNames.has(root.name) ? `${this.path}#${[root.name, ...chain].join('.')}` : null;

@@ -14,9 +14,10 @@ import {
   symbolNames,
   type CallFact,
   type FileFacts,
-} from '@codemap/facts';
+} from '@illuminate/facts';
 import type { CodeMap, Evidence, MapAbsence, MapEdge, MapNode } from './format';
 import { createRepoReader, isSecretPath, type RepoReader } from './repo';
+import { checkScreen, type ScreenCheck } from './screens';
 
 export type Status = 'confirmed' | 'unconfirmed';
 /** `fact`: the extracted code facts back the claim. `text`: the cited lines say what the claim says. */
@@ -30,10 +31,12 @@ export type CheckReport = {
   edges: Record<string, ClaimCheck>;
   absences: Record<string, AbsenceCheck>;
   tour: Record<string, TourCheck>;
+  /** By box id, for boxes that carry a screen. Not counted as claims: a screen that fails is simply not shown. */
+  screens: Record<string, ScreenCheck>;
   summary: { claims: number; confirmed: number; unconfirmed: number };
 };
 export type CheckOptions = {
-  /** Extra globs to leave out of searches (build output and `.codemap/` are always left out). */
+  /** Extra globs to leave out of searches (build output and `.illuminate/` are always left out). */
   ignore?: readonly string[];
   /** How far a cited line may have moved and still count (default 3). */
   lineWindow?: number;
@@ -59,6 +62,12 @@ export function check(map: CodeMap, root: string, options: CheckOptions = {}): C
   const absences: Record<string, AbsenceCheck> = {};
   for (const a of map.absences) absences[a.id] = checkAbsence(a, repo, files());
 
+  const screens: Record<string, ScreenCheck> = {};
+  for (const n of map.nodes) {
+    const sc = checkScreen(n, repo);
+    if (sc) screens[n.id] = sc;
+  }
+
   const tour: Record<string, TourCheck> = {};
   for (const t of map.tour) {
     const unconfirmed = [
@@ -71,7 +80,7 @@ export function check(map: CodeMap, root: string, options: CheckOptions = {}): C
 
   const all = [...Object.values(nodes), ...Object.values(edges), ...Object.values(absences)];
   const confirmed = all.filter((c) => c.status === 'confirmed').length;
-  return { nodes, edges, absences, tour, summary: { claims: all.length, confirmed, unconfirmed: all.length - confirmed } };
+  return { nodes, edges, absences, tour, screens, summary: { claims: all.length, confirmed, unconfirmed: all.length - confirmed } };
 }
 
 /** Facts per file, extracted on demand and cached for one check. */

@@ -1,5 +1,5 @@
 {
-  "name": "codemap",
+  "name": "illuminate",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -8,12 +8,15 @@
   "scripts": {
     "test": "npm test --workspaces --if-present",
     "typecheck": "tsc -p packages/facts && tsc -p packages/core && tsc -p packages/server && tsc -p packages/viewer",
-    "build": "npm run build -w @codemap/viewer",
-    "codemap": "node packages/server/bin/codemap.mjs",
-    "preview": "npm run build && tsx packages/server/scripts/preview.ts"
+    "build": "npm run build -w @illuminate/viewer",
+    "illume": "node packages/server/bin/illuminate.mjs",
+    "illuminate": "node packages/server/bin/illuminate.mjs",
+    "preview": "npm run build && tsx packages/server/scripts/preview.ts",
+    "release": "node scripts/release.mjs"
   },
   "devDependencies": {
     "@types/node": "22.20.5",
+    "esbuild": "0.21.5",
     "typescript": "5.9.3",
     "vitest": "2.1.9"
   },

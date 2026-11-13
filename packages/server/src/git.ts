@@ -1,4 +1,4 @@
-// The little git codemap needs: which commit a map was made from, and whether a file has uncommitted changes.
+// The little git illuminate needs: which commit a map was made from, and whether a file has uncommitted changes.
 import { execFileSync } from 'node:child_process';
 
 const git = (root: string, args: string[]): string | null => {

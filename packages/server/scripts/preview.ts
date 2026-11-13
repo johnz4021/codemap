@@ -6,11 +6,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Agent, AgentRequest } from '../src/agent';
-import { MAP_SCHEMA } from '../src/schemas';
+import { MAP_SCHEMA, QUICK_ANSWER_SCHEMA } from '../src/schemas';
 import { startServer } from '../src/server';
 
 const fixture = (p: string) => fileURLToPath(new URL(`../../core/test/fixtures/${p}`, import.meta.url));
-const root = mkdtempSync(join(tmpdir(), 'codemap-preview-'));
+const root = mkdtempSync(join(tmpdir(), 'illuminate-preview-'));
 cpSync(fixture('care-app'), root, { recursive: true });
 const MAP = JSON.parse(readFileSync(fixture('care-app.map.json'), 'utf8'));
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -36,16 +36,20 @@ const agent: Agent = async (req) => {
   }
   // Only the question itself (the line after "## Their question"), not the instructions around it.
   const q = req.prompt.slice(req.prompt.indexOf('## Their question')).split('\n')[1] ?? '';
+  // The map-only first try: questions about where things run or changes need the code; anything else is on the map.
+  if (req.schema === QUICK_ANSWER_SCHEMA) {
+    await sleep(600);
+    // Billing isn't part of this map (or this app): the "different part of the app" card.
+    if (/invoice|bill/i.test(q)) return { output: { route: 'elsewhere', newQuestion: 'How does the app bill patients and send invoices?' }, sessionId: null, cost: 0 };
+    if (/make|change|fix|right away|immediately|where|when|run/i.test(q)) return { output: { route: 'code', missing: 'Code the map doesn\'t show.' }, sessionId: null, cost: 0 };
+  }
   if (/make|change|fix|right away|immediately/i.test(q)) {
     await narrate(req, [['read', 'Reading src/events/bus.ts'], ['search', 'Searching for "bus\\.on\\("']]);
     return {
       output: {
         concept: 'The email goes out right away if something listens for the "patient converted" announcement and runs the rules. Adding a small listener does that; the nightly job stays as a backup.',
-        how: 'Subscribe to patient.converted on the event bus and call evaluateRules for that patient.',
-        code: "New file src/automations/listeners.ts: bus.on('patient.converted', …) → evaluateRules({ patientId })",
         refs: ['s4', 'miss', 'u1'],
         moves: { focus: 's4', highlight: ['s4', 'u1', 'miss'] },
-        followUps: [],
         fix: {
           summary: 'Run the automation rules as soon as a patient converts, by listening for the announcement. The nightly job stays as a backup.',
           edits: [],
@@ -62,15 +66,12 @@ const agent: Agent = async (req) => {
     return {
       output: {
         concept: 'The rules only run in a nightly job at 2:00 am, and only for patients created the day before. A patient who converts today waits until tonight at the earliest.',
-        how: 'runNightly is scheduled with the cron expression "0 2 * * *". It loads patients created after yesterday and calls evaluateRules for each.',
-        code: 'src/jobs/nightly.ts:7 runNightly → src/automations/evaluate.ts:4 evaluateRules',
         refs: ['j1', 'ej', 'u1', 'n-yesterday'],
         add: {
           nodes: [{ id: 'n-yesterday', area: 'jobs', name: "Yesterday's patients only", symbol: 'src/jobs/nightly.ts#runNightly', explain: { concept: 'The nightly job only looks at patients created the day before.' }, evidence: [{ file: 'src/jobs/nightly.ts', line: 9, text: 'createdAfter: yesterday' }] }],
           edges: [{ id: 'e-yesterday', from: 'j1', to: 'n-yesterday', kind: 'then', label: 'filters', evidence: [{ file: 'src/jobs/nightly.ts', line: 9, text: "db.where('patients'" }] }],
         },
         moves: { focus: 'j1', highlight: ['j1', 'n-yesterday', 'ej', 'u1', 'eu12', 'u2', 'eu23', 'u3'] },
-        followUps: ['Make the welcome email go out right away'],
       },
       sessionId: 'preview-explainer',
       cost: 0,
@@ -80,20 +81,20 @@ const agent: Agent = async (req) => {
   return {
     output: {
       concept: 'This is where the app tells the rest of the system that a patient just enrolled, so other parts can react, for example by sending the welcome email. Right now nothing is listening, so that reaction never happens.',
-      how: 'markConverted sends a message named patient.converted through the app\'s event bus (a shared channel: one part announces, any part that subscribed hears it). No code subscribes to patient.converted.',
-      code: "src/patients/service.ts:6  bus.emit('patient.converted', { patientId })\nNo bus.on('patient.converted', …) anywhere in src/",
+      route: 'answer',
       refs: ['s4', 'miss'],
       moves: { focus: 's4', highlight: ['s4', 'miss', 'u1'] },
-      followUps: ['Where do the automation rules actually run?', 'Make the welcome email go out right away'],
     },
     sessionId: 'preview-explainer',
     cost: 0,
   };
 };
 
-const server = await startServer({ root, port: Number(process.env.PORT ?? 4318), agent });
+const cleanUp = () => rmSync(root, { recursive: true, force: true });
+// No autoStop here (a preview stays up for UI work), but the page's Stop button still ends it.
+const server = await startServer({ root, port: Number(process.env.PORT ?? 4318), agent, onStop: () => { cleanUp(); process.exit(0); } });
 const id = server.startMap('What happens when a patient converts? Does the welcome email go out?');
-console.log(`\ncodemap preview (scripted Claude, no model calls) on a copy of the care app:\n\n  ${server.pageUrl(id)}\n`);
-const stop = () => void server.close().then(() => { rmSync(root, { recursive: true, force: true }); process.exit(0); });
+console.log(`\nilluminate preview (scripted Claude, no model calls) on a copy of the care app:\n\n  ${server.pageUrl(id)}\n`);
+const stop = () => void server.close().then(() => { cleanUp(); process.exit(0); });
 process.on('SIGINT', stop);
 process.on('SIGTERM', stop);

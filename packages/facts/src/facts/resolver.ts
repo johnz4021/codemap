@@ -22,7 +22,7 @@ export type RepoResolver = RepoResolverLike & { root: string };
 
 /**
  * Resolver for the repo at `root`. If a workspace package isn't linked under `node_modules` (no install yet), it is
- * symlinked under `<root>/.codemap/ws-modules` so `exports` maps still apply (codemap writes only under `.codemap/`).
+ * symlinked under `<root>/.illuminate/ws-modules` so `exports` maps still apply (illuminate writes only under `.illuminate/`).
  */
 export function createRepoResolver(rootIn: string): RepoResolver {
   const root = fs.realpathSync(rootIn);
@@ -128,7 +128,7 @@ export function workspaceDirs(root: string): string[] {
   return out.sort();
 }
 
-/** Symlink workspace packages missing from `node_modules` under `.codemap/ws-modules`; returns that dir, or null if none were needed. */
+/** Symlink workspace packages missing from `node_modules` under `.illuminate/ws-modules`; returns that dir, or null if none were needed. */
 function linkWorkspaces(root: string): string | null {
   const missing: { name: string; dir: string }[] = [];
   for (const dir of workspaceDirs(root)) {
@@ -139,7 +139,7 @@ function linkWorkspaces(root: string): string | null {
     if (name && !fs.existsSync(path.join(root, 'node_modules', name))) missing.push({ name, dir });
   }
   if (missing.length === 0) return null;
-  const shim = path.join(root, '.codemap', 'ws-modules');
+  const shim = path.join(root, '.illuminate', 'ws-modules');
   for (const { name, dir } of missing) {
     const link = path.join(shim, name);
     const target = path.join(root, dir);

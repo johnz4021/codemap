@@ -1,6 +1,6 @@
-# Handoff: where codemap came from, what's decided, what's next
+# Handoff: where illuminate came from, what's decided, what's next
 
-Context for anyone (person or agent) picking codemap up. The code and `README.md` say *what* exists; this says *why*,
+Context for anyone (person or agent) picking illuminate up. The code and `README.md` say *what* exists; this says *why*,
 what was learned along the way, and what's still open. As of 2026-11-02.
 
 ## 1. The problem
@@ -37,7 +37,7 @@ frontend."*
   sharp segment: they hit this on every new client.
 - **The third person** plans heavily and says AI implements well "but…". The note cut off. **Follow up**: this is either
   the toughest customer or evidence that the pain is smaller for disciplined planners.
-- **The bar to clear is "ask Claude for a Mermaid diagram".** That's free and solves maybe 60% of "wall of text". Codemap
+- **The bar to clear is "ask Claude for a Mermaid diagram".** That's free and solves maybe 60% of "wall of text". Illuminate
   has to win on things people notice: claims checked against the code, click-through to the code, the same drawing every
   time, and **showing what's missing**.
 
@@ -46,13 +46,16 @@ frontend."*
 - **Point at anything and ask.** Select a box, an arrow or a region; answers appear next to what was selected.
 - **Plain English first.** Translating code into concepts *is* the value. Three depths: Concept, How it works, Code.
   Define jargon. Use a small concrete example from their own code.
+  *(Later, Nov 2026: the three depths were dropped after trying them. Nobody opened the deeper two, and writing them
+  made every answer slower. Replies are now a few plain sentences, the map does the explaining, and each box carries
+  its code. The format still accepts `how` and `code` on boxes, so older maps load.)*
 - **A real graph:** areas as containers, steps inside, labeled arrows between them. An early design with lane rows of
   blocks was rejected as "unintuitive, not an actual graph".
 - **A walkthrough written with each map,** because a graph alone is hard to start reading. Stops go in the order that
   makes sense to a newcomer, and you can ask at every stop.
 - **No "guess what happens next" prompts.** That idea was rejected.
 - **The agent can fix things from the map**, not just explain them (see decision 5).
-- **Model-agnostic is wanted.** The simplest version: codemap runs its own Claude explainer, and any coding agent
+- **Model-agnostic is wanted.** The simplest version: illuminate runs its own Claude explainer, and any coding agent
   launches it.
 - **Learning from walkthroughs:** a diagram of the user's own vibecoded architecture lost them. Every diagram needs its
   question and a line of context on top, 5 to 7 boxes at first with details on click, and plain labels.
@@ -67,14 +70,19 @@ frontend."*
    never stored; they're computed on every check.
 3. **"Nothing does X" is a claim with proof.** Absences carry the search that proves them, and the checker reruns it.
    The missing connection is the bug people care about, and only a graph that can show absences can show it.
-4. **Codemap runs its own Claude explainer,** separate from the user's coding chat. It works with any agent and keeps
+4. **Illuminate runs its own Claude explainer,** separate from the user's coding chat. It works with any agent and keeps
    explanation quality consistent. It can read the whole repo: the map is a starting point, not a fence. Anything it
    adds is drawn only if the checker confirms it.
+   **Revised 2026-11-04 for the pilot: the Claude Code channel.** Products on the Agent SDK may not use people's
+   claude.ai sign-in (Agent SDK overview and Legal and compliance pages), and pilot users shouldn't need an API key.
+   So in Claude Code the user's own session is the explainer: `bridge.ts` is an `Agent` whose requests go to that
+   session through the channel (`channel.ts`), and maker, explainer, fixes and `check()` are unchanged. The CLI with
+   an API key stays for everything else (Codex, CI).
 5. **Fixes:** Claude proposes. The fix is drawn as a green dashed arrow next to the exact diff. Nothing changes until
-   approval. Then codemap writes exactly that diff, refusing if the files changed since the proposal, re-checks the map,
-   and offers Undo. Only one agent edits at a time. If codemap is ever connected to the user's coding chat, that agent
+   approval. Then illuminate writes exactly that diff, refusing if the files changed since the proposal, re-checks the map,
+   and offers Undo. Only one agent edits at a time. If illuminate is ever connected to the user's coding chat, that agent
    makes the edit instead.
-6. **Delivery:** the basic version works everywhere through a skill, the `codemap` CLI and a browser tab. Optional
+6. **Delivery:** the basic version works everywhere through a skill, the `illume` CLI and a browser tab. Optional
    upgrades (not built):
    - **Channels:** Claude Code only, research preview. An MCP server pushes the user's question into the running chat.
    - **MCP Apps:** Cursor, VS Code Copilot, ChatGPT, Claude Desktop. The viewer embeds in the chat, and `ui/message` sends
@@ -95,7 +103,7 @@ frontend."*
   - Keep cluster IDs stable between rebuilds.
   - Stamp the graph with `built_at_commit`.
   - Hook messages phrased as facts, not commands. They found imperative wording gets ignored as prompt injection.
-- **Don't build on it.** Codemap's edge is everything it lacks.
+- **Don't build on it.** Illuminate's edge is everything it lacks.
 
 ## 7. What's built (verified)
 
@@ -107,20 +115,32 @@ frontend."*
   - It also found a bug nobody planted: nothing ever starts the nightly job.
   - A real question cost about $0.14 and added two confirmed gaps.
   - A real fix cost about $0.24, was approved and applied, and re-checked 22 of 22.
+- **Claude Code channel** (`illume channel`, 2026-11-04): tested with an MCP client in place of Claude Code
+  (`test/channel.test.ts`: a map made in one turn, a question on the map pushed into the session and answered back) and
+  over real stdio. **Not yet tried in a live Claude Code session.** A map request is about 3.5k tokens, even on
+  scout-run.
 - **Demo frontend:** `examples/care-app-ui/index.html`, the patient app as staff see it. Convert a patient and no welcome
   email arrives, even though the automation is active.
 
 ## 8. Not built yet, and next steps
 
-- **Questions, answers and fix proposals live in server memory** and are lost on restart; maps are saved to disk.
-- **Hand-off to the user's coding agent** (channels / MCP Apps) and an MCP `publish_map` tool for agents that explore on
-  their own.
+- **Undo for an applied fix lasts only while the server runs.** Questions, answers and fix states are saved with the
+  map (since 2026-11-03), and simple questions are answered from the map before Claude searches the code.
+- **Hand-off to the user's coding agent:** built for Claude Code, with no channel flag since 2026-11-12. Claude keeps an
+  `illuminate_listen` call open; Claude Code backgrounds it after two minutes and wakes the session when a question
+  arrives on the map (tried in a live session: woken 0.2 s after the question). A quiet listening call was dropped by Claude Code
+  after 30 minutes despite progress notifications, so it now returns after 25 and Claude starts another. Not yet
+  tried: Esc while listening, a question arriving mid-turn. MCP Apps and a key-free mode for Codex are not built.
+- **Channel gaps:** the browser shows "Claude Code is working on this in your terminal" but not what Claude is reading;
+  each new map opens a new tab; the read-only tools and the secret guard are only asked for, not enforced, since Claude
+  uses its own session's tools. Ask Anthropic to put the channel on the allowlist before a wider launch.
 - **Big repos are untested.** The head-start scan reads the whole repo.
 - **Next, in order:**
-  1. **Run Phase 0 with the integration interviewee:** his real question, codemap vs "Claude + Mermaid" side by side.
-  2. Try codemap on a real repo, or a fresh Scout copy (`../scout-run`; never `../scout-agent`).
-  3. Persist sessions.
-  4. Channels hand-off in Claude Code.
+  1. **Run Phase 0 with the integration interviewee:** his real question, illuminate vs "Claude + Mermaid" side by side.
+  2. Try illuminate on a real repo, or a fresh Scout copy (`../scout-run`; never `../scout-agent`).
+  3. Done 2026-11-03: off-topic questions offer a new map (or an answer in words), plus a map switcher. Next there: a
+     routing test of 10–15 real questions with expected routes, run by hand since it uses Claude.
+  4. Built 2026-11-04: the Claude Code channel. Next: try it live in Claude Code on care-app, then with pilot users.
   5. MCP Apps.
 - **Later (Phase 3 of the plan):**
   - A fast graph engine with updates on every edit (incremental, LSP-style).
@@ -146,7 +166,10 @@ frontend."*
   - The first click after a navigation is often dropped.
 - **zsh `echo` mangles backslashes in JSON.** Write curl output to a file instead.
 - **Channels with a custom server:**
-  - Launch with `claude --dangerously-load-development-channels server:<name>`.
+  - Launch with `claude --dangerously-load-development-channels server:<name>`. The flag is ignored under `-p` and the
+    Agent SDK, so a channel can only be tried in an interactive session.
+  - The server must log to stderr: stdout is the MCP connection (`runChannel` redirects `console.log`).
+  - `@modelcontextprotocol/sdk` 1.32.2 negotiates at most protocol 2025-11-25, which stays clear of the 2026-07-28 problem below.
   - Claude Code won't register a channel server on MCP protocol 2026-07-28; `MCP_SDK_GENERATION=v1` works around it.
   - The page needs its own sender check (a token): an ungated channel is a prompt-injection risk.
 

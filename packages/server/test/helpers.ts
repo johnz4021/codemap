@@ -10,7 +10,7 @@ export const CARE_MAP: Record<string, any> = JSON.parse(readFileSync(fileURLToPa
 
 const dirs: string[] = [];
 export function copyCareApp(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'codemap-server-'));
+  const dir = mkdtempSync(join(tmpdir(), 'illuminate-server-'));
   dirs.push(dir);
   cpSync(CARE_APP, dir, { recursive: true });
   return dir;

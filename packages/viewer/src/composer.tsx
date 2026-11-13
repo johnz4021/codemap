@@ -9,12 +9,14 @@ export type ComposerProps = {
   selection: Sel;
   draft: string;
   busy: boolean;
+  /** Focus the box when it appears (it moves into the conversation when that opens). */
+  autoFocus?: boolean;
   onDraft: (text: string) => void;
   onRemove: (kind: keyof Sel, id: string) => void;
   onSend: () => void;
 };
 
-export function Composer({ map, selection, draft, busy, onDraft, onRemove, onSend }: ComposerProps) {
+export function Composer({ map, selection, draft, busy, autoFocus, onDraft, onRemove, onSend }: ComposerProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const chips = (['nodes', 'edges', 'absences'] as const).flatMap((kind) => selection[kind].map((id) => ({ kind, id })));
 
@@ -27,6 +29,11 @@ export function Composer({ map, selection, draft, busy, onDraft, onRemove, onSen
   useEffect(() => {
     if (draft) ref.current?.focus();
   }, [draft === '']);
+  useEffect(() => {
+    if (autoFocus) ref.current?.focus({ preventScroll: true });
+    // Only when it first appears.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <form

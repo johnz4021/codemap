@@ -1,0 +1,12 @@
+{
+  "name": "illuminate",
+  "owner": { "name": "johnz4021" },
+  "description": "illuminate: checked, interactive maps of how your code works.",
+  "plugins": [
+    {
+      "name": "illuminate",
+      "source": "./plugin",
+      "description": "Ask how your code works and get a checked map you can point at and ask about."
+    }
+  ]
+}

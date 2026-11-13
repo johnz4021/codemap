@@ -53,6 +53,44 @@ describe('extractFacts: symbols', () => {
     expect(f.calls).toEqual([{ from: 'src/x.ts#<cb1>', to: 'src/x.ts#go', confidence: 'syntactic', count: 1 }]);
   });
 
+  it('names functions declared inside functions, and the methods a factory returns, as outer.inner', () => {
+    const f = facts([
+      'import { save as importedSave } from "./lib/a";',
+      'export function startServer() {',
+      '  publish();',
+      '  function startMap() { publish(); helper(); }',
+      '  const publish = () => importedSave();',
+      '  [1].forEach(() => publish());',
+      '  return { startMap, pageUrl: (id) => id, close() { publish(); } };',
+      '}',
+      'export const createStore = (root) => ({ get() { return root; }, save: async () => {} });',
+      'function helper() {}',
+    ].join('\n'));
+    expect(f.symbols.map((s) => `${s.name}:${s.kind}${s.parent ? `<${s.parent.split('#')[1]}` : ''}`)).toEqual([
+      'startServer:function', 'startServer.startMap:function<startServer', 'startServer.publish:function<startServer',
+      'startServer.pageUrl:method<startServer', 'startServer.close:method<startServer',
+      'createStore:function', 'createStore.get:method<createStore', 'createStore.save:method<createStore', 'helper:function',
+    ]);
+    // Calls belong to the innermost named function; a callback still folds into the function around it. Calls between
+    // nested functions resolve, including before the declaration.
+    expect(f.calls.map((c) => `${c.from.split('#')[1]} → ${c.to.split('#')[1] ?? c.to}`).sort()).toEqual([
+      'startServer → startServer.publish',
+      'startServer.close → startServer.publish',
+      'startServer.publish → save', // the import's own name
+      'startServer.startMap → helper',
+      'startServer.startMap → startServer.publish',
+    ].sort());
+  });
+
+  it('lets a nested function shadow a top-level one, and leaves a name declared twice unresolved', () => {
+    const f = facts([
+      'function go() {}',
+      'export function outer() { go(); function go() {} }',
+      'export function twice() { pick(); const pick = () => 1; function pick() {} }',
+    ].join('\n'));
+    expect(f.calls.map((c) => `${c.from.split('#')[1]} → ${c.to.split('#')[1]}`)).toEqual(['outer → outer.go']);
+  });
+
   it('marks components in .tsx files', () => {
     const f = facts('export function Page() { return <div/>; }\nexport const Row = () => <span/>;\nexport const useThing = () => 1;\n', 'src/ui/Page.tsx');
     expect(f.symbols.map((s) => `${s.name}:${s.kind}`)).toEqual(['Page:component', 'Row:component', 'useThing:function']);

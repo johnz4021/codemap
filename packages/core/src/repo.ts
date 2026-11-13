@@ -2,7 +2,7 @@
 // and big or binary files are skipped.
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { matchesAny } from '@codemap/facts';
+import { matchesAny } from '@illuminate/facts';
 import { isSafeRelativePath } from './format';
 
 /** Never read, never searched, never sent anywhere. */

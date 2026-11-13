@@ -1,5 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import '@fontsource-variable/instrument-sans';
 import '@xyflow/react/dist/style.css';
 import './styles.css';
 import { App } from './app';

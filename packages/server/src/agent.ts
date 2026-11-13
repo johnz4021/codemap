@@ -1,26 +1,30 @@
-// The one place codemap talks to a model: a read-only Claude Agent SDK session that returns structured output.
+// The one place illuminate talks to a model: a read-only Claude Agent SDK session that returns structured output.
 // Read, Grep and Glob only; secret files are refused and left out of searches. Tests swap in a fake `Agent`.
 import * as path from 'node:path';
 import { query, type HookCallback, type PreToolUseHookInput } from '@anthropic-ai/claude-agent-sdk';
-import { isSecretPath } from '@codemap/core';
+import { isSecretPath } from '@illuminate/core';
 
-export type Progress = { kind: 'read' | 'search' | 'list'; text: string };
+export type Progress = { kind: 'read' | 'search' | 'list' | 'status'; text: string };
 
 export type AgentRequest = {
   prompt: string;
+  /** What this is for, in a few plain words ("Making the map for …"). Shown when the request is handed to Claude Code. */
+  label?: string;
   schema: Record<string, unknown>;
   cwd: string;
   /** Continue an earlier session (follow-up questions keep what was already read). */
   resume?: string | null;
   model?: string;
   maxTurns?: number;
+  /** Tools Claude may use: a subset of Read, Grep and Glob (default all three; `[]` for none, answering from the prompt). */
+  tools?: readonly string[];
   onProgress?: (p: Progress) => void;
   signal?: AbortSignal;
 };
 export type AgentResponse = { output: unknown; sessionId: string | null; cost: number | null };
 export type Agent = (req: AgentRequest) => Promise<AgentResponse>;
 
-export const DEFAULT_MODEL = process.env.CODEMAP_MODEL ?? 'claude-opus-5-5';
+export const DEFAULT_MODEL = process.env.ILLUMINATE_MODEL ?? 'claude-opus-5-5';
 const READ_ONLY = ['Read', 'Grep', 'Glob'];
 /** ripgrep glob that leaves secret files out of a search the model didn't scope itself. */
 const NOT_SECRETS = '!**/{.env,.env.*,*.pem,*.key,*.p12,id_rsa*,id_ed25519*,.npmrc,.netrc}';
@@ -57,13 +61,15 @@ export function secretGuard(cwd: string): HookCallback {
 export const sdkAgent: Agent = async (req) => {
   const abortController = new AbortController();
   req.signal?.addEventListener('abort', () => abortController.abort(), { once: true });
+  // Never more than read-only, whatever the caller asks for.
+  const tools = READ_ONLY.filter((t) => (req.tools ?? READ_ONLY).includes(t));
   const q = query({
     prompt: req.prompt,
     options: {
       cwd: req.cwd,
       model: req.model ?? DEFAULT_MODEL,
-      tools: READ_ONLY,
-      allowedTools: READ_ONLY,
+      tools,
+      allowedTools: tools,
       permissionMode: 'dontAsk',
       settingSources: [],
       strictMcpConfig: true,

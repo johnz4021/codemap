@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { addToMap, freshId, removeAbsences, slugify } from '../src/edit';
+import { addToMap, freshId, patchMap, removeAbsences, removeFromMap, slugify } from '../src/edit';
 import { parseMap, type CodeMap } from '../src/format';
 
 const MAP = (() => {
@@ -47,3 +47,38 @@ describe('ids', () => {
     expect(slugify('???')).toBe('map');
   });
 });
+
+describe('patchMap', () => {
+  const u2 = () => structuredClone(MAP.nodes.find((n) => n.id === 'u2')!);
+
+  it('replaces items by id in place, adds new ones, and leaves the rest alone', () => {
+    const r = patchMap(MAP, {
+      nodes: [{ ...u2(), name: 'Email waits in a queue' }, { id: 'n9', area: 'jobs', name: 'New step', evidence: [{ file: 'a.ts', line: 1, text: 'x' }] }],
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.map.nodes.map((n) => n.id)).toEqual([...MAP.nodes.map((n) => n.id), 'n9']);
+    expect(r.map.nodes.find((n) => n.id === 'u2')!.name).toBe('Email waits in a queue');
+    expect({ ...r.map, nodes: [] }).toEqual({ ...MAP, nodes: [] });
+  });
+
+  it('drops removed ids with the arrows and tour mentions that point at them', () => {
+    const r = patchMap(MAP, { remove: ['u3'] });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.map.nodes.some((n) => n.id === 'u3')).toBe(false);
+    expect(r.map.edges.some((e) => e.from === 'u3' || e.to === 'u3')).toBe(false);
+    expect(r.map.tour.every((t) => !(t.focus.nodes ?? []).includes('u3'))).toBe(true);
+  });
+
+  it('refuses changes that leave the map broken', () => {
+    const r = patchMap(MAP, { edges: [{ ...MAP.edges[0]!, to: 'nowhere' }] });
+    expect(r).toEqual({ ok: false, problems: [`edge "${MAP.edges[0]!.id}": unknown node "nowhere"`] });
+  });
+
+  it('changes nothing when there is nothing to change', () => {
+    expect(patchMap(MAP, {})).toEqual({ ok: true, map: MAP });
+    expect(removeFromMap(MAP, new Set())).toBe(MAP);
+  });
+});
+

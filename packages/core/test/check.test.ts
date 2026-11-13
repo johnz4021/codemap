@@ -27,7 +27,7 @@ const variant = (edit: (m: any) => void): CodeMap => {
 const tmp: string[] = [];
 afterAll(() => { for (const d of tmp) rmSync(d, { recursive: true, force: true }); });
 const copyApp = () => {
-  const dir = mkdtempSync(join(tmpdir(), 'codemap-care-'));
+  const dir = mkdtempSync(join(tmpdir(), 'illuminate-care-'));
   tmp.push(dir);
   cpSync(APP, dir, { recursive: true });
   return dir;

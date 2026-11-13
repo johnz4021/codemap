@@ -20,6 +20,22 @@ export const NodeKind = z.enum(['entry', 'step', 'store', 'external', 'job']);
  */
 export const EdgeKind = z.enum(['calls', 'request', 'imports', 'then']);
 
+/**
+ * What the person sees at a box, when a picture helps. Optional, and the checker decides whether it's shown:
+ * - `capture`: a screenshot illuminate took itself (`capture` is its id under `.illuminate/screens/`).
+ * - `image`: an image file in the repo that the box's cited code uses (an icon, a sprite).
+ * - `sketch`: a rough wireframe of the visible things in a markup `file`; every element's text must be in that file.
+ * `highlight` is the text of the thing on screen this box is about (the button's label), which gets marked.
+ */
+export const ScreenElement = z.object({ kind: z.enum(['heading', 'button', 'field', 'link', 'text', 'image']), text: z.string().min(1).max(80) });
+export const Screen = z.object({
+  kind: z.enum(['capture', 'image', 'sketch']),
+  capture: Id.optional(),
+  file: z.string().min(1).optional(),
+  elements: z.array(ScreenElement).min(1).max(12).optional(),
+  highlight: z.string().min(1).max(80).optional(),
+});
+
 export const Area = z.object({ id: Id, label: z.string().min(1).max(40) });
 
 export const Node = z.object({
@@ -31,6 +47,7 @@ export const Node = z.object({
   symbol: z.string().regex(/^[^#]+#.+$/, 'symbol is <file>#<name>').optional(),
   explain: z.object({ concept: z.string(), how: z.string(), code: z.string() }).partial().optional(),
   evidence: z.array(Evidence).min(1),
+  screen: Screen.optional(),
 });
 
 export const Edge = z.object({
@@ -84,6 +101,7 @@ export const CodeMap = z.object({
 });
 
 export type Evidence = z.output<typeof Evidence>;
+export type Screen = z.output<typeof Screen>;
 export type MapNode = z.output<typeof Node>;
 export type MapEdge = z.output<typeof Edge>;
 export type MapAbsence = z.output<typeof Absence>;
@@ -127,6 +145,10 @@ export function parseMap(input: unknown): ParseResult {
     if (!areas.has(n.area)) problems.push(`node "${n.id}": unknown area "${n.area}"`);
     if (n.symbol && !isSafeRelativePath(n.symbol.slice(0, n.symbol.indexOf('#')))) problems.push(`node "${n.id}": symbol file must be a path inside the repo`);
     evidence(`node "${n.id}"`, n.evidence);
+    const sc = n.screen;
+    if (sc?.kind === 'capture' && !sc.capture) problems.push(`node "${n.id}": a capture screen needs the \`capture\` id illuminate_capture returned`);
+    if (sc && sc.kind !== 'capture' && (!sc.file || !isSafeRelativePath(sc.file))) problems.push(`node "${n.id}": a ${sc.kind} screen needs \`file\`, a path inside the repo`);
+    if (sc?.kind === 'sketch' && !sc.elements) problems.push(`node "${n.id}": a sketch screen needs \`elements\``);
   }
   for (const e of map.edges) {
     if (!nodes.has(e.from)) problems.push(`edge "${e.id}": unknown node "${e.from}"`);

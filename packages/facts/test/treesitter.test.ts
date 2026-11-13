@@ -124,6 +124,6 @@ describe('Go (net/http, chi, gin, database/sql)', () => {
       ms = Math.min(ms, performance.now() - t0);
     }
     expect(f.symbols).toHaveLength(2000);
-    expect(ms).toBeLessThan(process.env.CODEMAP_PERF_STRICT ? 150 : 1000);
+    expect(ms).toBeLessThan(process.env.ILLUMINATE_PERF_STRICT ? 150 : 1000);
   });
 });
